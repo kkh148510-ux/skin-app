@@ -62,7 +62,7 @@ export default function NewAppointmentForm({
   const [name, setName] = useState(initialName);
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState('');
-  const [treatment, setTreatment] = useState('');
+  const [treatments, setTreatments] = useState<string[]>([]);
   const [memo, setMemo] = useState('');
   const [smsEnabled, setSmsEnabled] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -120,7 +120,7 @@ export default function NewAppointmentForm({
         name: name || null,
         appointment_date: date,
         appointment_time: time + ':00',
-        treatment: treatment || null,
+        treatment: treatments.length > 0 ? treatments.join(', ') : null,
         memo: memo || null,
         sms_enabled: smsEnabled,
       });
@@ -219,19 +219,36 @@ export default function NewAppointmentForm({
       </section>
 
       <section>
-        <label className="block text-sm text-muted mb-1.5">관리 (선택)</label>
+        <label className="block text-sm text-muted mb-1.5">
+          관리 (복수 선택 가능)
+        </label>
         <div className="flex flex-wrap gap-2">
-          {TREATMENTS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTreatment(treatment === t ? '' : t)}
-              className={`chip ${treatment === t ? 'chip-active' : ''}`}
-            >
-              {t}
-            </button>
-          ))}
+          {TREATMENTS.map((t) => {
+            const active = treatments.includes(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() =>
+                  setTreatments((prev) =>
+                    prev.includes(t)
+                      ? prev.filter((x) => x !== t)
+                      : [...prev, t],
+                  )
+                }
+                className={`chip ${active ? 'chip-active' : ''}`}
+              >
+                {active ? '✓ ' : ''}
+                {t}
+              </button>
+            );
+          })}
         </div>
+        {treatments.length > 0 ? (
+          <p className="text-xs text-muted mt-1.5">
+            선택됨: {treatments.join(', ')}
+          </p>
+        ) : null}
       </section>
 
       <section>

@@ -67,7 +67,11 @@ export default function EditAppointmentForm({
 
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
-  const [treatment, setTreatment] = useState(initialTreatment);
+  const [treatments, setTreatments] = useState<string[]>(
+    initialTreatment
+      ? initialTreatment.split(',').map((t) => t.trim()).filter(Boolean)
+      : [],
+  );
   const [memo, setMemo] = useState(initialMemo);
   const [smsEnabled, setSmsEnabled] = useState(initialSmsEnabled);
   const [err, setErr] = useState<string | null>(null);
@@ -78,7 +82,7 @@ export default function EditAppointmentForm({
       const r = await updateAppointment(id, {
         appointment_date: date,
         appointment_time: time + ':00',
-        treatment: treatment || null,
+        treatment: treatments.length > 0 ? treatments.join(', ') : null,
         memo: memo || null,
         sms_enabled: smsEnabled,
       });
@@ -152,19 +156,36 @@ export default function EditAppointmentForm({
       </section>
 
       <section>
-        <label className="block text-sm text-muted mb-1.5">관리</label>
+        <label className="block text-sm text-muted mb-1.5">
+          관리 (복수 선택 가능)
+        </label>
         <div className="flex flex-wrap gap-2">
-          {TREATMENTS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTreatment(treatment === t ? '' : t)}
-              className={`chip ${treatment === t ? 'chip-active' : ''}`}
-            >
-              {t}
-            </button>
-          ))}
+          {TREATMENTS.map((t) => {
+            const active = treatments.includes(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() =>
+                  setTreatments((prev) =>
+                    prev.includes(t)
+                      ? prev.filter((x) => x !== t)
+                      : [...prev, t],
+                  )
+                }
+                className={`chip ${active ? 'chip-active' : ''}`}
+              >
+                {active ? '✓ ' : ''}
+                {t}
+              </button>
+            );
+          })}
         </div>
+        {treatments.length > 0 ? (
+          <p className="text-xs text-muted mt-1.5">
+            선택됨: {treatments.join(', ')}
+          </p>
+        ) : null}
       </section>
 
       <section>
