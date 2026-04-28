@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getServerSupabase } from '@/lib/supabase';
 import { isValidPhone, normalizePhone, formatPhone } from '@/lib/phone';
+import { todayKST, addDaysKST } from '@/lib/date';
 
 export type ActionResult<T = unknown> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -228,6 +229,128 @@ export async function updateAppSettings(input: {
   revalidatePath('/sms');
   revalidatePath('/settings');
   return { ok: true, data: null };
+}
+
+/** 정기예약 정보 저장 */
+export async function updateCustomerRegular(
+  id: string,
+  input: {
+    regular_active: boolean;
+    regular_dows: string;
+    regular_time: string | null;
+    regular_treatment: string | null;
+  },
+): Promise<ActionResult<null>> {
+  const sb = getServerSupabase();
+  const { error } = await sb
+    .from('customers')
+    .update({
+      regular_active: input.regular_active,
+      regular_dows: input.regular_dows,
+      regular_time: input.regular_time,
+      regular_treatment: input.regular_treatment,
+    })
+    .eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/customers/${id}`);
+  return { ok: true, data: null };
+}
+
+/** 정기예약 N주치 자동 생성 (이미 같은 시간에 예약 있으면 스킵) */
+export async function createRecurringAppointments(
+  customerId: string,
+  weeks: number,
+): Promise<ActionResult<{ created: number; skipped: number }>> {
+  if (weeks < 1 || weeks > 52) {
+    return { ok: false, error: '주 수는 1~52 사이여야 합니다.' };
+  }
+  const sb = getServerSupabase();
+
+  const { data: customer, error: cErr } = await sb
+    .from('customers')
+    .select('id, regular_active, regular_dows, regular_time, regular_treatment')
+    .eq('id', customerId)
+    .maybeSingle();
+  if (cErr || !customer) {
+    return { ok: false, error: cErr?.message ?? '고객을 찾을 수 없습니다.' };
+  }
+  if (!customer.regular_active) {
+    return { ok: false, error: '정기예약이 꺼져있습니다. 먼저 켜고 저장하세요.' };
+  }
+  if (!customer.regular_time) {
+    return { ok: false, error: '정기 시간을 설정하세요.' };
+  }
+  const dows = (customer.regular_dows ?? '')
+    .split(',')
+    .map((d: string) => Number(d.trim()))
+    .filter((d: number) => !Number.isNaN(d) && d >= 0 && d <= 6);
+  if (dows.length === 0) {
+    return { ok: false, error: '정기 요일을 1개 이상 선택하세요.' };
+  }
+
+  // 내일부터 weeks*7 일까지 해당 요일 모으기
+  const today = todayKST();
+  const candidateDates: string[] = [];
+  for (let i = 1; i <= weeks * 7; i++) {
+    const dateStr = addDaysKST(today, i);
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=일
+    if (dows.includes(dow)) candidateDates.push(dateStr);
+  }
+  if (candidateDates.length === 0) {
+    return { ok: true, data: { created: 0, skipped: 0 } };
+  }
+
+  // 시간 비교용. DB time 컬럼은 'HH:MM:SS'. 입력 'HH:MM' 도 같이 본다.
+  const timePrefix = (customer.regular_time as string).slice(0, 5);
+
+  // 같은 시간 동일 고객 기존 예약 조회
+  const { data: existing } = await sb
+    .from('appointments')
+    .select('appointment_date, appointment_time, status')
+    .eq('customer_id', customerId)
+    .in('appointment_date', candidateDates);
+
+  const existingDates = new Set(
+    (existing ?? [])
+      .filter(
+        (e: { appointment_time: string; status: string }) =>
+          e.status !== 'cancelled' &&
+          (e.appointment_time as string).slice(0, 5) === timePrefix,
+      )
+      .map((e: { appointment_date: string }) => e.appointment_date),
+  );
+
+  const toCreate = candidateDates.filter((d) => !existingDates.has(d));
+  if (toCreate.length === 0) {
+    return {
+      ok: true,
+      data: { created: 0, skipped: candidateDates.length },
+    };
+  }
+
+  const inserts = toCreate.map((date) => ({
+    customer_id: customerId,
+    appointment_date: date,
+    appointment_time: timePrefix + ':00',
+    treatment: customer.regular_treatment || null,
+    status: 'reserved',
+    sms_enabled: true,
+    sms_status: 'pending' as const,
+  }));
+
+  const { error: insErr } = await sb.from('appointments').insert(inserts);
+  if (insErr) return { ok: false, error: insErr.message };
+
+  revalidatePath('/');
+  revalidatePath(`/customers/${customerId}`);
+  return {
+    ok: true,
+    data: {
+      created: toCreate.length,
+      skipped: candidateDates.length - toCreate.length,
+    },
+  };
 }
 
 /** 빈 고객 추가 (고객 화면에서 사용) */

@@ -4,6 +4,7 @@ import { getServerSupabase } from '@/lib/supabase';
 import { formatPhone } from '@/lib/phone';
 import { formatShortDate, formatTimeKorean } from '@/lib/date';
 import CustomerEditForm from '@/components/CustomerEditForm';
+import CustomerRegularForm from '@/components/CustomerRegularForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +59,18 @@ export default async function CustomerDetailPage({
             전화걸기
           </a>
         </div>
+      </section>
+
+      <section className="mt-6">
+        <CustomerRegularForm
+          customerId={customer.id}
+          initial={{
+            active: customer.regular_active ?? false,
+            dows: customer.regular_dows ?? '',
+            time: customer.regular_time ?? null,
+            treatment: customer.regular_treatment ?? null,
+          }}
+        />
       </section>
 
       <section className="mt-6">

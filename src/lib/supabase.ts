@@ -6,6 +6,10 @@ export type Customer = {
   phone_display: string | null;
   name: string | null;
   memo: string | null;
+  regular_active: boolean;
+  regular_dows: string; // '1,3' 등
+  regular_time: string | null; // 'HH:MM:SS'
+  regular_treatment: string | null;
   created_at: string;
   updated_at: string;
 };
